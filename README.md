@@ -35,7 +35,7 @@ Paste them into both files (`web_version.py` and `mobile_version.py`), replacing
 `python web_version.py`
 - Open up http://127.0.0.1:5000/login in the browser.
 - Register or log in.
-- 
+
 ### Launching the mobile app:
 `python mobile_version.py`
 - Enter your username and password to synchronize with the web version.
