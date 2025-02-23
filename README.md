@@ -19,5 +19,5 @@ MentalHealthAssistant is an innovative Python application designed to monitor me
 ## Installation
 1. Clone the repository:
    ```bash
-   git clone https://github.com/ВАШ_ЛОГИН/MentalHealthAssistant.git
+   git clone https://github.com/whotyc/MentalHealthAssistant.git
 cd MentalHealthAssistant
