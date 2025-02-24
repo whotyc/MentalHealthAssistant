@@ -21,3 +21,12 @@ CREATE TABLE chats (
     timestamp TEXT NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );
+
+CREATE TABLE diaries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id TEXT NOT NULL,
+    content TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    mood TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id)
+);
