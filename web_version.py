@@ -22,7 +22,6 @@ import pyttsx3
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime
 
-# Инициализация
 detector = FER()
 cap = cv2.VideoCapture(0)
 app = Flask(__name__)
@@ -32,16 +31,13 @@ app.config['JWT_SECRET_KEY'] = 'jwt-secret-string'
 socketio = SocketIO(app, cors_allowed_origins="*")
 scheduler = BackgroundScheduler()
 
-# База данных
 conn = sqlite3.connect("mental_health.db", check_same_thread=False)
 
-# Spotify
 sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
     client_id="YOUR_SPOTIFY_CLIENT_ID",
     client_secret="YOUR_SPOTIFY_CLIENT_SECRET"
 ))
 
-# Модель
 class EmotionPredictor(nn.Module):
     def __init__(self):
         super(EmotionPredictor, self).__init__()
@@ -62,7 +58,6 @@ class EmotionPredictor(nn.Module):
 model = EmotionPredictor()
 psychologist = pipeline("text-generation", model="distilgpt2")
 
-# Рекомендации
 recommendations = {
     "angry": {"text": "Глубоко подышите.", "spotify": "relaxing piano"},
     "sad": {"text": "Поговорите с другом.", "spotify": "uplifting pop"},
@@ -70,11 +65,9 @@ recommendations = {
     "stressed": {"text": "Попробуйте медитацию.", "spotify": "calm meditation"}
 }
 
-# Голосовые функции
 recognizer = sr.Recognizer()
 engine = pyttsx3.init()
 
-# Анализ
 def analyze_voice():
     duration = 2
     fs = 44100
@@ -163,13 +156,11 @@ def video_processing(user_id):
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
-# Асинхронные функции
 async def async_psychologist(message):
     loop = asyncio.get_running_loop()
     response = await loop.run_in_executor(None, lambda: psychologist(f"Ты психолог. Помоги мне: {message}", max_length=100)[0]["generated_text"])
     return response
 
-# Голосовой ввод
 def recognize_speech():
     with sr.Microphone() as source:
         print("Слушаю...")
@@ -186,7 +177,6 @@ def text_to_speech(text):
     engine.say(text)
     engine.runAndWait()
 
-# Уведомления
 def check_stress_and_notify(user_id):
     cursor = conn.cursor()
     cursor.execute("SELECT stress_level FROM emotions WHERE user_id=? ORDER BY timestamp DESC LIMIT 1", (user_id,))
@@ -197,7 +187,6 @@ def check_stress_and_notify(user_id):
 scheduler.add_job(lambda: check_stress_and_notify(str(get_jwt_identity())), 'interval', minutes=30)
 scheduler.start()
 
-# Роутинг
 @app.route('/login', methods=['GET', 'POST'])
 async def login():
     if request.method == 'POST':
@@ -552,7 +541,6 @@ async def logout():
     session.pop('username', None)
     return redirect(url_for('login'))
 
-# API
 @app.route('/api/emotions', methods=['GET'])
 @jwt_required()
 async def api_emotions():
