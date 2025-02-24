@@ -48,11 +48,9 @@ class EmotionPredictor(nn.Module):
 model = EmotionPredictor()
 psychologist = pipeline("text-generation", model="distilgpt2")
 
-# Голосовые функции
 recognizer = sr.Recognizer()
 engine = pyttsx3.init()
 
-# Анализ
 def analyze_voice():
     duration = 2
     fs = 44100
