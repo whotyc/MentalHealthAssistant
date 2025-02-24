@@ -1,0 +1,14 @@
+opencv-python
+fer
+librosa
+sounddevice
+kivy
+numpy
+torch
+transformers
+speech_recognition
+pyttsx3
+plyer
+matplotlib
+requests
+bcrypt
