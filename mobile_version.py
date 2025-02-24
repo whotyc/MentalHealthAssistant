@@ -12,14 +12,17 @@ from kivy.uix.label import Label
 from kivy.uix.button import Button
 from kivy.uix.textinput import TextInput
 from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.image import Image
 from kivy.uix.screenmanager import ScreenManager, Screen
 from kivy.clock import Clock
 import threading
+import speech_recognition as sr
+import pyttsx3
+from plyer import notification
+from datetime import datetime
 import requests
 from io import BytesIO
 from kivy.core.image import Image as CoreImage
-import json
+import matplotlib.pyplot as plt
 
 detector = FER()
 cap = cv2.VideoCapture(0)
@@ -45,6 +48,11 @@ class EmotionPredictor(nn.Module):
 model = EmotionPredictor()
 psychologist = pipeline("text-generation", model="distilgpt2")
 
+# Голосовые функции
+recognizer = sr.Recognizer()
+engine = pyttsx3.init()
+
+# Анализ
 def analyze_voice():
     duration = 2
     fs = 44100
@@ -57,16 +65,36 @@ def analyze_voice():
     return min(abs(np.mean(mfcc) + np.mean(chroma) + np.mean(spectral_contrast)) / 200, 1.0)
 
 def save_emotion(emotion, stress_level, user_id):
-    from datetime import datetime
-    conn.execute("INSERT INTO emotions (emotion, timestamp, stress_level, user_id) VALUES (?, ?, ?, ?)", 
-                 (emotion, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), stress_level, user_id))
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO emotions (emotion, timestamp, stress_level, user_id) VALUES (?, ?, ?, ?)", 
+                   (emotion, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), stress_level, user_id))
     conn.commit()
 
 def save_chat(user_id, message, response):
-    from datetime import datetime
-    conn.execute("INSERT INTO chats (user_id, message, response, timestamp) VALUES (?, ?, ?, ?)", 
-                 (user_id, message, response, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO chats (user_id, message, response, timestamp) VALUES (?, ?, ?, ?)", 
+                   (user_id, message, response, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
     conn.commit()
+
+def save_diary(user_id, content, mood):
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO diaries (user_id, content, timestamp, mood) VALUES (?, ?, ?, ?)", 
+                   (user_id, content, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), mood))
+    conn.commit()
+
+def plot_stress(user_id):
+    cursor = conn.cursor()
+    cursor.execute("SELECT stress_level, timestamp FROM emotions WHERE user_id=? ORDER BY timestamp DESC LIMIT 10", (user_id,))
+    data = cursor.fetchall()
+    stress_levels = [row[0] for row in data]
+    times = [row[1][-8:] for row in data]
+    plt.figure(figsize=(5, 3))
+    plt.plot(times, stress_levels, marker='o', color='b')
+    plt.xticks(rotation=45)
+    buf = BytesIO()
+    plt.savefig(buf, format="png", bbox_inches="tight")
+    buf.seek(0)
+    return CoreImage(BytesIO(buf.read()), ext="png").texture
 
 emotion_history = []
 def video_processing(user_id):
@@ -80,15 +108,51 @@ def video_processing(user_id):
             emotion_dict = emotions[0]["emotions"]
             top_emotion = max(emotion_dict, key=emotion_dict.get)
             emotion_data = list(emotion_dict.values()) + [stress_level]
+            emotion_history.append((emotion_data, top_emotion))
+
             with torch.no_grad():
                 pred = model(torch.tensor(emotion_data, dtype=torch.float32).unsqueeze(0))
                 pred_emotion = ["angry", "sad", "happy", "stressed"][torch.argmax(pred).item()]
             if stress_level > 0.7:
                 pred_emotion = "stressed"
+
+            if len(emotion_history) > 10:
+                optimizer.zero_grad()
+                outputs = model(torch.tensor(emotion_history[-2][0], dtype=torch.float32).unsqueeze(0))
+                target = torch.tensor([["angry", "sad", "happy", "stressed"].index(emotion_history[-2][1])], dtype=torch.long)
+                loss = criterion(outputs, target)
+                loss.backward()
+                optimizer.step()
+
             save_emotion(pred_emotion, stress_level, user_id)
+            notification.notify(title='MentalHealthAssistant', message=f'Эмоция: {pred_emotion}, Стресс: {stress_level:.2f}', timeout=10)
+
         cv2.imshow("Mental Health Assistant", frame)
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
+
+def recognize_speech():
+    with sr.Microphone() as source:
+        print("Слушаю...")
+        audio = recognizer.listen(source, timeout=5)
+    try:
+        text = recognizer.recognize_google(audio, language="ru-RU")
+        return text
+    except sr.UnknownValueError:
+        return "Не удалось распознать речь."
+    except sr.RequestError:
+        return "Ошибка сервиса распознавания."
+
+def text_to_speech(text):
+    engine.say(text)
+    engine.runAndWait()
+
+def send_notification():
+    cursor = conn.cursor()
+    cursor.execute("SELECT stress_level FROM emotions WHERE user_id=? ORDER BY timestamp DESC LIMIT 1", (app.user_id,))
+    stress = cursor.fetchone()
+    if stress and stress[0] > 0.7:
+        notification.notify(title='MentalHealthAssistant', message='Ваш уровень стресса высокий. Попробуйте медитацию!', timeout=10)
 
 class LoginScreen(Screen):
     def __init__(self, **kwargs):
@@ -114,8 +178,8 @@ class LoginScreen(Screen):
         })
         if response.status_code == 200:
             self.manager.token = response.json()["access_token"]
-            self.manager.user_id = requests.get("http://127.0.0.1:5000/api/emotions", 
-                                                headers={"Authorization": f"Bearer {self.manager.token}"}).json()["emotions"][0]["user_id"]
+            self.manager.user_id = str(requests.get("http://127.0.0.1:5000/api/emotions", 
+                                                    headers={"Authorization": f"Bearer {self.manager.token}"}).json()["emotions"][0]["user_id"])
             self.manager.current = 'main'
         else:
             self.username.text = "Ошибка входа"
@@ -139,16 +203,24 @@ class MainScreen(Screen):
         self.history_label = Label(text="История:", size_hint=(1, 0.2))
         self.chat_input = TextInput(hint_text="Сообщение ИИ-психологу", size_hint=(1, 0.1))
         self.chat_output = Label(text="Чат:", size_hint=(1, 0.2))
-        send_button = Button(text="Отправить", size_hint=(1, 0.1))
-        send_button.bind(on_press=self.send_message)
-        
+        self.send_button = Button(text="Отправить", size_hint=(1, 0.1))
+        self.voice_button = Button(text="Голосовой ввод", size_hint=(1, 0.1))
+        self.diary_input = TextInput(hint_text="Запишите свои мысли...", size_hint=(1, 0.1))
+        self.mood_dropdown = None  # Будет инициализировано позже
+        self.save_diary_button = Button(text="Сохранить дневник", size_hint=(1, 0.1))
+        self.send_button.bind(on_press=self.send_message)
+        self.voice_button.bind(on_press=self.voice_input)
+        self.save_diary_button.bind(on_press=self.save_diary)
+
         self.layout.add_widget(self.status_label)
         self.layout.add_widget(self.stress_image)
         self.layout.add_widget(self.history_label)
         self.layout.add_widget(self.chat_input)
         self.layout.add_widget(self.chat_output)
-        self.layout.add_widget(send_button)
-        
+        self.layout.add_widget(self.send_button)
+        self.layout.add_widget(self.voice_button)
+        self.layout.add_widget(self.diary_input)
+        self.layout.add_widget(self.save_diary_button)  
         self.add_widget(self.layout)
         Clock.schedule_interval(self.update_status, 5.0)
 
@@ -163,15 +235,9 @@ class MainScreen(Screen):
                 latest = data[0]
                 self.status_label.text = f"Состояние: {latest['emotion']}, Стресс: {latest['stress']:.2f}"
                 self.history_label.text = "История:\n" + "\n".join([f"{e['time']}: {e['emotion']}" for e in data[:5]])
-                
-                plt.figure(figsize=(5, 3))
-                plt.plot([e['time'][-8:] for e in data], [e['stress'] for e in data], marker='o', color='b')
-                plt.xticks(rotation=45)
-                buf = BytesIO()
-                plt.savefig(buf, format="png", bbox_inches="tight")
-                buf.seek(0)
-                self.stress_image.texture = CoreImage(BytesIO(buf.read()), ext="png").texture
-                buf.close()
+                self.stress_image.texture = plot_stress(self.manager.user_id)
+
+        send_notification()
 
     def send_message(self, instance):
         message = self.chat_input.text
@@ -181,19 +247,41 @@ class MainScreen(Screen):
         if response.status_code == 200:
             response_text = response.json()["response"]
             save_chat(self.manager.user_id, message, response_text)
-            cursor = conn.execute("SELECT message, response FROM chats WHERE user_id=? ORDER BY timestamp DESC LIMIT 5", (self.manager.user_id,))
-            self.chat_output.text = "Чат:\n" + "\n".join([f"Вы: {row[0]}\nИИ: {row[1]}" for row in cursor.fetchall()])
+            self.chat_output.text = "Чат:\n" + "\n".join([f"Вы: {row[0]}\nИИ: {row[1]}" for row in cursor.fetchall() if row[0] or row[1]])
         self.chat_input.text = ""
+
+    def voice_input(self, instance):
+        text = recognize_speech()
+        if text != "Не удалось распознать речь." and text != "Ошибка сервиса распознавания.":
+            response = requests.post("http://127.0.0.1:5000/api/chat", 
+                                     json={"voice": text}, 
+                                     headers={"Authorization": f"Bearer {self.manager.token}"})
+            if response.status_code == 200:
+                response_text = response.json()["response"]
+                save_chat(self.manager.user_id, text, response_text)
+                self.chat_output.text = "Чат:\n" + "\n".join([f"Вы: {row[0]}\nИИ: {row[1]}" for row in cursor.fetchall() if row[0] or row[1]])
+                text_to_speech(response_text)
+
+    def save_diary(self, instance):
+        content = self.diary_input.text
+        mood = "happy"  
+        response = requests.post("http://127.0.0.1:5000/api/diary", 
+                                 json={"content": content, "mood": mood}, 
+                                 headers={"Authorization": f"Bearer {self.manager.token}"})
+        if response.status_code == 200:
+            self.diary_input.text = ""
+            notification.notify(title='MentalHealthAssistant', message='Дневник сохранен!', timeout=5)
 
 class MentalHealthApp(App):
     def build(self):
         self.sm = ScreenManager()
         self.sm.add_widget(LoginScreen(name='login'))
         self.sm.add_widget(MainScreen(name='main'))
+        self.user_id = None
         return self.sm
 
 if __name__ == "__main__":
-    user_id = "1"  
+    user_id = "1" 
     video_thread = threading.Thread(target=video_processing, args=(user_id,))
     video_thread.start()
     MentalHealthApp().run()
