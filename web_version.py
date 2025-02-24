@@ -1,13 +1,15 @@
 import cv2
+import asyncio
+import concurrent.futures
 from fer import FER
 import librosa
 import numpy as np
 import sqlite3
 import sounddevice as sd
-import asyncio
 from flask import Flask, render_template_string, request, session, redirect, url_for, jsonify
 from flask_jwt_extended import JWTManager, jwt_required, create_access_token, get_jwt_identity
 from flask_socketio import SocketIO, emit
+from flask_babel import Babel, gettext, lazy_gettext
 import threading
 import torch
 import torch.nn as nn
@@ -21,23 +23,34 @@ import speech_recognition as sr
 import pyttsx3
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime
+import bcrypt
 
+# Инициализация
 detector = FER()
 cap = cv2.VideoCapture(0)
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
 jwt = JWTManager(app)
 app.config['JWT_SECRET_KEY'] = 'jwt-secret-string'
+app.config['BABEL_DEFAULT_LOCALE'] = 'ru'
+app.config['BABEL_TRANSLATION_DIRECTORIES'] = './translations'
 socketio = SocketIO(app, cors_allowed_origins="*")
 scheduler = BackgroundScheduler()
+babel = Babel(app)
 
+# Переводы
+LANGUAGES = ['ru', 'en', 'es', 'fr', 'de', 'zh']
+
+# База данных
 conn = sqlite3.connect("mental_health.db", check_same_thread=False)
 
+# Spotify
 sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
     client_id="YOUR_SPOTIFY_CLIENT_ID",
     client_secret="YOUR_SPOTIFY_CLIENT_SECRET"
 ))
 
+# Модель
 class EmotionPredictor(nn.Module):
     def __init__(self):
         super(EmotionPredictor, self).__init__()
@@ -58,15 +71,22 @@ class EmotionPredictor(nn.Module):
 model = EmotionPredictor()
 psychologist = pipeline("text-generation", model="distilgpt2")
 
+# Рекомендации
 recommendations = {
-    "angry": {"text": "Глубоко подышите.", "spotify": "relaxing piano"},
-    "sad": {"text": "Поговорите с другом.", "spotify": "uplifting pop"},
-    "happy": {"text": "Сохраняйте позитив!", "spotify": "happy vibes"},
-    "stressed": {"text": "Попробуйте медитацию.", "spotify": "calm meditation"}
+    "angry": {"text": gettext("Take deep breaths."), "spotify": "relaxing piano"},
+    "sad": {"text": gettext("Talk to a friend."), "spotify": "uplifting pop"},
+    "happy": {"text": gettext("Keep the positivity!"), "spotify": "happy vibes"},
+    "stressed": {"text": gettext("Try meditation."), "spotify": "calm meditation"}
 }
 
+# Голосовые функции
 recognizer = sr.Recognizer()
 engine = pyttsx3.init()
+
+async def analyze_voice_async():
+    loop = asyncio.get_event_loop()
+    with concurrent.futures.ThreadPoolExecutor() as pool:
+        return await loop.run_in_executor(pool, analyze_voice)
 
 def analyze_voice():
     duration = 2
@@ -79,17 +99,29 @@ def analyze_voice():
     spectral_contrast = librosa.feature.spectral_contrast(y=audio, sr=fs)
     return min(abs(np.mean(mfcc) + np.mean(chroma) + np.mean(spectral_contrast)) / 200, 1.0)
 
+async def save_emotion_async(emotion, stress_level, user_id):
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, lambda: save_emotion(emotion, stress_level, user_id))
+
 def save_emotion(emotion, stress_level, user_id):
     cursor = conn.cursor()
     cursor.execute("INSERT INTO emotions (emotion, timestamp, stress_level, user_id) VALUES (?, ?, ?, ?)", 
                    (emotion, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), stress_level, user_id))
     conn.commit()
 
+async def save_chat_async(user_id, message, response):
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, lambda: save_chat(user_id, message, response))
+
 def save_chat(user_id, message, response):
     cursor = conn.cursor()
     cursor.execute("INSERT INTO chats (user_id, message, response, timestamp) VALUES (?, ?, ?, ?)", 
                    (user_id, message, response, datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
     conn.commit()
+
+async def save_diary_async(user_id, content, mood):
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, lambda: save_diary(user_id, content, mood))
 
 def save_diary(user_id, content, mood):
     cursor = conn.cursor()
@@ -105,7 +137,7 @@ def plot_stress(user_id):
     times = [row[1][-8:] for row in data]
     plt.figure(figsize=(6, 4))
     plt.plot(times, stress_levels, marker='o', color='b')
-    plt.title("Уровень стресса")
+    plt.title(gettext("Stress Level"))
     plt.xticks(rotation=45)
     buf = BytesIO()
     plt.savefig(buf, format="png", bbox_inches="tight")
@@ -115,13 +147,13 @@ def plot_stress(user_id):
     return img_str
 
 emotion_history = []
-def video_processing(user_id):
+async def video_processing_async(user_id):
     while True:
-        ret, frame = cap.read()
+        ret, frame = await asyncio.to_thread(lambda: cap.read())
         if not ret:
             break
-        emotions = detector.detect_emotions(frame)
-        stress_level = analyze_voice()
+        emotions = await asyncio.to_thread(lambda: detector.detect_emotions(frame))
+        stress_level = await analyze_voice_async()
         if emotions:
             emotion_dict = emotions[0]["emotions"]
             top_emotion = max(emotion_dict, key=emotion_dict.get)
@@ -135,78 +167,91 @@ def video_processing(user_id):
                 pred_emotion = "stressed"
 
             if len(emotion_history) > 10:
-                optimizer.zero_grad()
+                await asyncio.to_thread(lambda: optimizer.zero_grad())
                 outputs = model(torch.tensor(emotion_history[-2][0], dtype=torch.float32).unsqueeze(0))
                 target = torch.tensor([["angry", "sad", "happy", "stressed"].index(emotion_history[-2][1])], dtype=torch.long)
                 loss = criterion(outputs, target)
-                loss.backward()
-                optimizer.step()
+                await asyncio.to_thread(lambda: loss.backward())
+                await asyncio.to_thread(lambda: optimizer.step())
 
-            rec = recommendations.get(pred_emotion, {"text": "Отдохните.", "spotify": "calm"})
+            rec = recommendations.get(pred_emotion, {"text": gettext("Take a break."), "spotify": "calm"})
             track = sp.search(q=rec["spotify"], type="playlist", limit=1)["playlists"]["items"][0]["external_urls"]["spotify"]
-            cv2.putText(frame, f"Эмоция: {pred_emotion}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-            cv2.putText(frame, f"Стресс: {stress_level:.2f}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-            cv2.putText(frame, rec["text"], (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-            cv2.putText(frame, f"Spotify: {track}", (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+            await asyncio.to_thread(lambda: cv2.putText(frame, f"Emotion: {pred_emotion}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2))
+            await asyncio.to_thread(lambda: cv2.putText(frame, f"Stress: {stress_level:.2f}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2))
+            await asyncio.to_thread(lambda: cv2.putText(frame, rec["text"], (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2))
+            await asyncio.to_thread(lambda: cv2.putText(frame, f"Spotify: {track}", (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2))
 
-            save_emotion(pred_emotion, stress_level, user_id)
+            await save_emotion_async(pred_emotion, stress_level, user_id)
             socketio.emit('update_emotion', {'emotion': pred_emotion, 'stress': stress_level}, namespace='/notifications')
 
-        cv2.imshow("Mental Health Assistant", frame)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        await asyncio.to_thread(lambda: cv2.imshow("Mental Health Assistant", frame))
+        if await asyncio.to_thread(lambda: cv2.waitKey(1) & 0xFF == ord('q')):
             break
 
-async def async_psychologist(message):
-    loop = asyncio.get_running_loop()
-    response = await loop.run_in_executor(None, lambda: psychologist(f"Ты психолог. Помоги мне: {message}", max_length=100)[0]["generated_text"])
-    return response
+async def recognize_speech_async():
+    loop = asyncio.get_event_loop()
+    with concurrent.futures.ThreadPoolExecutor() as pool:
+        return await loop.run_in_executor(pool, recognize_speech)
 
 def recognize_speech():
     with sr.Microphone() as source:
-        print("Слушаю...")
+        print(gettext("Listening..."))
         audio = recognizer.listen(source, timeout=5)
     try:
         text = recognizer.recognize_google(audio, language="ru-RU")
         return text
     except sr.UnknownValueError:
-        return "Не удалось распознать речь."
+        return gettext("Could not recognize speech.")
     except sr.RequestError:
-        return "Ошибка сервиса распознавания."
+        return gettext("Service recognition error.")
+
+async def text_to_speech_async(text):
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, lambda: text_to_speech(text))
 
 def text_to_speech(text):
     engine.say(text)
     engine.runAndWait()
+
+async def check_stress_and_notify_async(user_id):
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, lambda: check_stress_and_notify(user_id))
 
 def check_stress_and_notify(user_id):
     cursor = conn.cursor()
     cursor.execute("SELECT stress_level FROM emotions WHERE user_id=? ORDER BY timestamp DESC LIMIT 1", (user_id,))
     stress = cursor.fetchone()
     if stress and stress[0] > 0.7:
-        socketio.emit('notification', {'message': 'Ваш уровень стресса высокий. Попробуйте медитацию!'}, namespace='/notifications')
+        socketio.emit('notification', {'message': gettext('Your stress level is high. Try meditation!')}, namespace='/notifications')
 
-scheduler.add_job(lambda: check_stress_and_notify(str(get_jwt_identity())), 'interval', minutes=30)
-scheduler.start()
+# Хеширование пароля
+def hash_password(password):
+    return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
+def check_password(password, hashed):
+    return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+
+# Роутинг
 @app.route('/login', methods=['GET', 'POST'])
 async def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
         cursor = conn.cursor()
-        cursor.execute("SELECT id, username FROM users WHERE username=? AND password=?", (username, password))
+        cursor.execute("SELECT id, username, password_hash FROM users WHERE username=?", (username,))
         user_data = cursor.fetchone()
-        if user_data:
+        if user_data and check_password(password, user_data[2]):
             access_token = create_access_token(identity=user_data[0])
             session['username'] = user_data[1]
             return jsonify({"access_token": access_token, "redirect": url_for('home')})
-        return "Неверный логин или пароль", 401
+        return gettext("Invalid login or password"), 401
     return render_template_string("""
         <!DOCTYPE html>
-        <html lang="ru">
+        <html lang="{{g.lang or 'ru'}}">
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Вход — MentalHealthAssistant</title>
+            <title>{{gettext('Login — MentalHealthAssistant')}}</title>
             <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
             <style>
                 body {font-family: Arial; background: #f8f8f8; min-height: 100vh; display: flex; justify-content: center; align-items: center;}
@@ -214,21 +259,32 @@ async def login():
                 .form-group {margin-bottom: 15px;}
                 .btn-primary {background: #4CAF50; border: none;}
                 .btn-primary:hover {background: #45a049;}
+                .lang-select {margin-bottom: 15px;}
             </style>
         </head>
         <body>
             <div class="login-form">
-                <h1 class="text-center">Вход</h1>
+                <h1 class="text-center">{{gettext('Login')}}</h1>
                 <form method="post">
                     <div class="form-group">
-                        <input type="text" name="username" class="form-control" placeholder="Логин" required>
+                        <select name="lang" class="form-select lang-select" onchange="window.location.href='/?lang='+this.value">
+                            <option value="ru" {% if g.lang == 'ru' %}selected{% endif %}>Русский</option>
+                            <option value="en" {% if g.lang == 'en' %}selected{% endif %}>English</option>
+                            <option value="es" {% if g.lang == 'es' %}selected{% endif %}>Español</option>
+                            <option value="fr" {% if g.lang == 'fr' %}selected{% endif %}>Français</option>
+                            <option value="de" {% if g.lang == 'de' %}selected{% endif %}>Deutsch</option>
+                            <option value="zh" {% if g.lang == 'zh' %}selected{% endif %}>中文</option>
+                        </select>
                     </div>
                     <div class="form-group">
-                        <input type="password" name="password" class="form-control" placeholder="Пароль" required>
+                        <input type="text" name="username" class="form-control" placeholder="{{gettext('Username')}}" required>
                     </div>
-                    <button type="submit" class="btn btn-primary w-100">Войти</button>
+                    <div class="form-group">
+                        <input type="password" name="password" class="form-control" placeholder="{{gettext('Password')}}" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">{{gettext('Log in')}}</button>
                 </form>
-                <p class="text-center mt-3"><a href="/register" class="text-decoration-none">Регистрация</a></p>
+                <p class="text-center mt-3"><a href="/register" class="text-decoration-none">{{gettext('Register')}}</a></p>
             </div>
             <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
         </body>
@@ -242,18 +298,19 @@ async def register():
         password = request.form['password']
         cursor = conn.cursor()
         try:
-            cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, password))
+            password_hash = hash_password(password)
+            cursor.execute("INSERT INTO users (username, password_hash) VALUES (?, ?)", (username, password_hash))
             conn.commit()
             return redirect(url_for('login'))
         except sqlite3.IntegrityError:
-            return "Пользователь уже существует", 400
+            return gettext("User already exists"), 400
     return render_template_string("""
         <!DOCTYPE html>
-        <html lang="ru">
+        <html lang="{{g.lang or 'ru'}}">
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Регистрация — MentalHealthAssistant</title>
+            <title>{{gettext('Register — MentalHealthAssistant')}}</title>
             <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
             <style>
                 body {font-family: Arial; background: #f8f8f8; min-height: 100vh; display: flex; justify-content: center; align-items: center;}
@@ -261,19 +318,30 @@ async def register():
                 .form-group {margin-bottom: 15px;}
                 .btn-primary {background: #4CAF50; border: none;}
                 .btn-primary:hover {background: #45a049;}
+                .lang-select {margin-bottom: 15px;}
             </style>
         </head>
         <body>
             <div class="login-form">
-                <h1 class="text-center">Регистрация</h1>
+                <h1 class="text-center">{{gettext('Register')}}</h1>
                 <form method="post">
                     <div class="form-group">
-                        <input type="text" name="username" class="form-control" placeholder="Логин" required>
+                        <select name="lang" class="form-select lang-select" onchange="window.location.href='/?lang='+this.value">
+                            <option value="ru" {% if g.lang == 'ru' %}selected{% endif %}>Русский</option>
+                            <option value="en" {% if g.lang == 'en' %}selected{% endif %}>English</option>
+                            <option value="es" {% if g.lang == 'es' %}selected{% endif %}>Español</option>
+                            <option value="fr" {% if g.lang == 'fr' %}selected{% endif %}>Français</option>
+                            <option value="de" {% if g.lang == 'de' %}selected{% endif %}>Deutsch</option>
+                            <option value="zh" {% if g.lang == 'zh' %}selected{% endif %}>中文</option>
+                        </select>
                     </div>
                     <div class="form-group">
-                        <input type="password" name="password" class="form-control" placeholder="Пароль" required>
+                        <input type="text" name="username" class="form-control" placeholder="{{gettext('Username')}}" required>
                     </div>
-                    <button type="submit" class="btn btn-primary w-100">Зарегистрироваться</button>
+                    <div class="form-group">
+                        <input type="password" name="password" class="form-control" placeholder="{{gettext('Password')}}" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">{{gettext('Register')}}</button>
                 </form>
             </div>
             <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -294,6 +362,10 @@ async def home():
     elif tab == 'diary':
         return await diary(user_id)
 
+@babel.localeselector
+def get_locale():
+    return request.args.get('lang', 'ru')
+
 async def history(user_id):
     cursor = conn.cursor()
     cursor.execute("SELECT emotion, timestamp, stress_level FROM emotions WHERE user_id=? ORDER BY timestamp DESC LIMIT 10", (user_id,))
@@ -301,11 +373,11 @@ async def history(user_id):
     stress_plot = plot_stress(user_id)
     return render_template_string("""
         <!DOCTYPE html>
-        <html lang="ru">
+        <html lang="{{g.lang or 'ru'}}">
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>История — MentalHealthAssistant</title>
+            <title>{{gettext('History — MentalHealthAssistant')}}</title>
             <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
             <style>
                 body {font-family: Arial; background: #f8f8f8; padding: 20px;}
@@ -316,6 +388,7 @@ async def history(user_id):
                 th, td {padding: 10px; border: 1px solid #ddd; text-align: left;}
                 th {background: #4CAF50; color: white;}
                 img {max-width: 100%; margin-top: 20px;}
+                .lang-select {margin-bottom: 15px;}
                 @media (max-width: 768px) {
                     table, img {width: 100%; font-size: 14px;}
                     .nav {flex-direction: column;}
@@ -323,26 +396,34 @@ async def history(user_id):
             </style>
         </head>
         <body>
-            <h1>Персональный помощник</h1>
-            <p>Пользователь: {{username}} <a href="/logout" class="btn btn-danger">Выйти</a></p>
+            <h1>{{gettext('Personal Assistant')}}</h1>
+            <p>{{gettext('User:')}} {{username}} <a href="/logout" class="btn btn-danger">{{gettext('Logout')}}</a></p>
             <div class="nav d-flex">
                 <form method="post" class="me-2">
                     <input type="hidden" name="tab" value="history">
-                    <button type="submit" class="btn btn-primary">История</button>
+                    <button type="submit" class="btn btn-primary">{{gettext('History')}}</button>
                 </form>
                 <form method="post" class="me-2">
                     <input type="hidden" name="tab" value="chat">
-                    <button type="submit" class="btn btn-primary">Чат с ИИ</button>
+                    <button type="submit" class="btn btn-primary">{{gettext('Chat with AI')}}</button>
                 </form>
                 <form method="post">
                     <input type="hidden" name="tab" value="diary">
-                    <button type="submit" class="btn btn-primary">Дневник</button>
+                    <button type="submit" class="btn btn-primary">{{gettext('Diary')}}</button>
                 </form>
+                <select name="lang" class="form-select lang-select" onchange="window.location.href='/?lang='+this.value">
+                    <option value="ru" {% if g.lang == 'ru' %}selected{% endif %}>Русский</option>
+                    <option value="en" {% if g.lang == 'en' %}selected{% endif %}>English</option>
+                    <option value="es" {% if g.lang == 'es' %}selected{% endif %}>Español</option>
+                    <option value="fr" {% if g.lang == 'fr' %}selected{% endif %}>Français</option>
+                    <option value="de" {% if g.lang == 'de' %}selected{% endif %}>Deutsch</option>
+                    <option value="zh" {% if g.lang == 'zh' %}selected{% endif %}>中文</option>
+                </select>
             </div>
-            <h2>История состояния</h2>
-            <img src="data:image/png;base64,{{stress_plot}}" alt="График стресса" class="img-fluid">
+            <h2>{{gettext('History of States')}}</h2>
+            <img src="data:image/png;base64,{{stress_plot}}" alt="{{gettext('Stress Chart')}}" class="img-fluid">
             <table>
-                <tr><th>Эмоция</th><th>Время</th><th>Уровень стресса</th></tr>
+                <tr><th>{{gettext('Emotion')}}</th><th>{{gettext('Time')}}</th><th>{{gettext('Stress Level')}}</th></tr>
                 {% for row in history %}
                     <tr><td>{{row[0]}}</td><td>{{row[1]}}</td><td>{{row[2]}}</td></tr>
                 {% endfor %}
@@ -355,7 +436,7 @@ async def history(user_id):
                     alert(data.message);
                 });
                 socket.on('update_emotion', (data) => {
-                    console.log('Эмоция обновлена:', data);
+                    console.log('Emotion updated:', data);
                 });
             </script>
         </body>
@@ -366,24 +447,24 @@ async def chat(user_id):
     if request.method == 'POST' and 'message' in request.form:
         message = request.form['message']
         response = await async_psychologist(f"Ты психолог. Помоги мне: {message}")
-        save_chat(user_id, message, response)
+        await save_chat_async(user_id, message, response)
     elif request.method == 'POST' and 'voice' in request.form:
-        text = recognize_speech()
-        if text != "Не удалось распознать речь." and text != "Ошибка сервиса распознавания.":
-            response = await async_psychologist(f"Ты психолог. Помоги мне: {text}")
-            save_chat(user_id, text, response)
-            text_to_speech(response)
+        text = await recognize_speech_async()
+        if text not in ["Could not recognize speech.", "Service recognition error."]:
+            response = await async_psychologist(f"You are a psychologist. Help me: {text}")
+            await save_chat_async(user_id, text, response)
+            await text_to_speech_async(response)
 
     cursor = conn.cursor()
     cursor.execute("SELECT message, response, timestamp FROM chats WHERE user_id=? ORDER BY timestamp DESC LIMIT 10", (user_id,))
     chat_data = cursor.fetchall()
     return render_template_string("""
         <!DOCTYPE html>
-        <html lang="ru">
+        <html lang="{{g.lang or 'ru'}}">
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Чат — MentalHealthAssistant</title>
+            <title>{{gettext('Chat — MentalHealthAssistant')}}</title>
             <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
             <style>
                 body {font-family: Arial; background: #f8f8f8; padding: 20px;}
@@ -393,6 +474,7 @@ async def chat(user_id):
                 textarea {width: 100%; height: 100px; margin-top: 10px;}
                 .chat {margin-top: 20px; border: 1px solid #ddd; padding: 10px; max-height: 300px; overflow-y: auto;}
                 .voice-btn {margin-top: 10px;}
+                .lang-select {margin-bottom: 15px;}
                 @media (max-width: 768px) {
                     textarea, .chat {width: 100%; font-size: 14px;}
                     .nav {flex-direction: column;}
@@ -400,34 +482,42 @@ async def chat(user_id):
             </style>
         </head>
         <body>
-            <h1>Персональный помощник</h1>
-            <p>Пользователь: {{username}} <a href="/logout" class="btn btn-danger">Выйти</a></p>
+            <h1>{{gettext('Personal Assistant')}}</h1>
+            <p>{{gettext('User:')}} {{username}} <a href="/logout" class="btn btn-danger">{{gettext('Logout')}}</a></p>
             <div class="nav d-flex">
                 <form method="post" class="me-2">
                     <input type="hidden" name="tab" value="history">
-                    <button type="submit" class="btn btn-primary">История</button>
+                    <button type="submit" class="btn btn-primary">{{gettext('History')}}</button>
                 </form>
                 <form method="post" class="me-2">
                     <input type="hidden" name="tab" value="chat">
-                    <button type="submit" class="btn btn-primary">Чат с ИИ</button>
+                    <button type="submit" class="btn btn-primary">{{gettext('Chat with AI')}}</button>
                 </form>
                 <form method="post">
                     <input type="hidden" name="tab" value="diary">
-                    <button type="submit" class="btn btn-primary">Дневник</button>
+                    <button type="submit" class="btn btn-primary">{{gettext('Diary')}}</button>
                 </form>
+                <select name="lang" class="form-select lang-select" onchange="window.location.href='/?lang='+this.value">
+                    <option value="ru" {% if g.lang == 'ru' %}selected{% endif %}>Русский</option>
+                    <option value="en" {% if g.lang == 'en' %}selected{% endif %}>English</option>
+                    <option value="es" {% if g.lang == 'es' %}selected{% endif %}>Español</option>
+                    <option value="fr" {% if g.lang == 'fr' %}selected{% endif %}>Français</option>
+                    <option value="de" {% if g.lang == 'de' %}selected{% endif %}>Deutsch</option>
+                    <option value="zh" {% if g.lang == 'zh' %}selected{% endif %}>中文</option>
+                </select>
             </div>
-            <h2>Чат с ИИ-психологом</h2>
+            <h2>{{gettext('Chat with AI Psychologist')}}</h2>
             <form method="post">
                 <input type="hidden" name="tab" value="chat">
-                <textarea name="message" placeholder="Напишите свои мысли..."></textarea><br>
-                <button type="submit" class="btn btn-primary">Отправить</button>
-                <button type="submit" name="voice" class="btn btn-secondary voice-btn">Голосовой ввод</button>
+                <textarea name="message" placeholder="{{gettext('Write your thoughts...')}}"></textarea><br>
+                <button type="submit" class="btn btn-primary">{{gettext('Send')}}</button>
+                <button type="submit" name="voice" class="btn btn-secondary voice-btn">{{gettext('Voice Input')}}</button>
             </form>
             <div class="chat">
-                <h3>История чата</h3>
+                <h3>{{gettext('Chat History')}}</h3>
                 {% for row in chat %}
-                    <p><b>Вы ({{row[2]}}):</b> {{row[0]}}</p>
-                    <p><b>ИИ:</b> {{row[1]}}</p>
+                    <p><b>{{gettext('You (')}}{{row[2]}}):</b> {{row[0]}}</p>
+                    <p><b>{{gettext('AI:')}}</b> {{row[1]}}</p>
                 {% endfor %}
             </div>
             <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -439,7 +529,7 @@ async def chat(user_id):
                 });
                 document.querySelector('.voice-btn').addEventListener('click', async () => {
                     const recognition = new webkitSpeechRecognition() || new SpeechRecognition();
-                    recognition.lang = 'ru-RU';
+                    recognition.lang = '{{g.lang or "ru-RU"}}'.split('-')[0] + '-RU';
                     recognition.start();
                     recognition.onresult = async (event) => {
                         const text = event.results[0][0].transcript;
@@ -449,7 +539,7 @@ async def chat(user_id):
                             method: 'POST',
                             body: formData
                         }).then(response => response.text()).then(data => {
-                            alert('ИИ ответил: ' + data);
+                            alert('AI responded: ' + data);
                         });
                     };
                 });
@@ -462,18 +552,18 @@ async def diary(user_id):
     if request.method == 'POST' and 'content' in request.form and 'mood' in request.form:
         content = request.form['content']
         mood = request.form['mood']
-        save_diary(user_id, content, mood)
+        await save_diary_async(user_id, content, mood)
 
     cursor = conn.cursor()
     cursor.execute("SELECT content, timestamp, mood FROM diaries WHERE user_id=? ORDER BY timestamp DESC LIMIT 10", (user_id,))
     diary_data = cursor.fetchall()
     return render_template_string("""
         <!DOCTYPE html>
-        <html lang="ru">
+        <html lang="{{g.lang or 'ru'}}">
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Дневник — MentalHealthAssistant</title>
+            <title>{{gettext('Diary — MentalHealthAssistant')}}</title>
             <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
             <style>
                 body {font-family: Arial; background: #f8f8f8; padding: 20px;}
@@ -482,6 +572,7 @@ async def diary(user_id):
                 .btn-primary:hover {background: #45a049;}
                 textarea {width: 100%; height: 150px; margin-top: 10px;}
                 .diary-entry {margin-top: 20px; border: 1px solid #ddd; padding: 10px; max-height: 300px; overflow-y: auto;}
+                .lang-select {margin-bottom: 15px;}
                 @media (max-width: 768px) {
                     textarea, .diary-entry {width: 100%; font-size: 14px;}
                     .nav {flex-direction: column;}
@@ -489,38 +580,46 @@ async def diary(user_id):
             </style>
         </head>
         <body>
-            <h1>Персональный помощник</h1>
-            <p>Пользователь: {{username}} <a href="/logout" class="btn btn-danger">Выйти</a></p>
+            <h1>{{gettext('Personal Assistant')}}</h1>
+            <p>{{gettext('User:')}} {{username}} <a href="/logout" class="btn btn-danger">{{gettext('Logout')}}</a></p>
             <div class="nav d-flex">
                 <form method="post" class="me-2">
                     <input type="hidden" name="tab" value="history">
-                    <button type="submit" class="btn btn-primary">История</button>
+                    <button type="submit" class="btn btn-primary">{{gettext('History')}}</button>
                 </form>
                 <form method="post" class="me-2">
                     <input type="hidden" name="tab" value="chat">
-                    <button type="submit" class="btn btn-primary">Чат с ИИ</button>
+                    <button type="submit" class="btn btn-primary">{{gettext('Chat with AI')}}</button>
                 </form>
                 <form method="post">
                     <input type="hidden" name="tab" value="diary">
-                    <button type="submit" class="btn btn-primary">Дневник</button>
+                    <button type="submit" class="btn btn-primary">{{gettext('Diary')}}</button>
                 </form>
+                <select name="lang" class="form-select lang-select" onchange="window.location.href='/?lang='+this.value">
+                    <option value="ru" {% if g.lang == 'ru' %}selected{% endif %}>Русский</option>
+                    <option value="en" {% if g.lang == 'en' %}selected{% endif %}>English</option>
+                    <option value="es" {% if g.lang == 'es' %}selected{% endif %}>Español</option>
+                    <option value="fr" {% if g.lang == 'fr' %}selected{% endif %}>Français</option>
+                    <option value="de" {% if g.lang == 'de' %}selected{% endif %}>Deutsch</option>
+                    <option value="zh" {% if g.lang == 'zh' %}selected{% endif %}>中文</option>
+                </select>
             </div>
-            <h2>Дневник</h2>
+            <h2>{{gettext('Diary')}}</h2>
             <form method="post">
                 <input type="hidden" name="tab" value="diary">
-                <textarea name="content" placeholder="Запишите свои мысли..."></textarea><br>
+                <textarea name="content" placeholder="{{gettext('Write your thoughts...')}}"></textarea><br>
                 <select name="mood" class="form-select" required>
-                    <option value="happy">Счастливый</option>
-                    <option value="sad">Грустный</option>
-                    <option value="angry">Злой</option>
-                    <option value="stressed">Стресс</option>
+                    <option value="happy">{{gettext('Happy')}}</option>
+                    <option value="sad">{{gettext('Sad')}}</option>
+                    <option value="angry">{{gettext('Angry')}}</option>
+                    <option value="stressed">{{gettext('Stressed')}}</option>
                 </select>
-                <button type="submit" class="btn btn-primary mt-2">Сохранить</button>
+                <button type="submit" class="btn btn-primary mt-2">{{gettext('Save')}}</button>
             </form>
             <div class="diary-entry">
-                <h3>Последние записи</h3>
+                <h3>{{gettext('Recent Entries')}}</h3>
                 {% for row in diary %}
-                    <p><b>{{row[1]}} (Настроение: {{row[2]}}):</b> {{row[0]}}</p>
+                    <p><b>{{row[1]}} ({{gettext('Mood:')}} {{row[2]}}):</b> {{row[0]}}</p>
                 {% endfor %}
             </div>
             <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -541,6 +640,7 @@ async def logout():
     session.pop('username', None)
     return redirect(url_for('login'))
 
+# API
 @app.route('/api/emotions', methods=['GET'])
 @jwt_required()
 async def api_emotions():
@@ -555,16 +655,17 @@ async def api_chat():
     user_id = get_jwt_identity()
     if 'message' in request.json:
         message = request.json['message']
-        response = await async_psychologist(f"Ты психолог. Помоги мне: {message}")
-        save_chat(user_id, message, response)
+        response = await async_psychologist(f"You are a psychologist. Help me: {message}")
+        await save_chat_async(user_id, message, response)
         return jsonify({"response": response})
     elif 'voice' in request.json:
-        text = recognize_speech()
-        if text != "Не удалось распознать речь." and text != "Ошибка сервиса распознавания.":
-            response = await async_psychologist(f"Ты психолог. Помоги мне: {text}")
-            save_chat(user_id, text, response)
+        text = await recognize_speech_async()
+        if text not in [gettext("Could not recognize speech."), gettext("Service recognition error.")]:
+            response = await async_psychologist(f"You are a psychologist. Help me: {text}")
+            await save_chat_async(user_id, text, response)
+            await text_to_speech_async(response)
             return jsonify({"response": response})
-        return jsonify({"response": "Ошибка голосового ввода"}), 400
+        return jsonify({"response": gettext("Voice input error")}), 400
 
 @app.route('/api/diary', methods=['POST'])
 @jwt_required()
@@ -573,19 +674,22 @@ async def api_diary():
     content = request.json.get('content', '')
     mood = request.json.get('mood', '')
     if content and mood:
-        save_diary(user_id, content, mood)
+        await save_diary_async(user_id, content, mood)
         return jsonify({"status": "success"})
-    return jsonify({"status": "error", "message": "Не хватает данных"}), 400
+    return jsonify({"status": "error", "message": gettext("Missing data")}), 400
 
 @socketio.on('connect', namespace='/notifications')
 @jwt_required()
 def handle_connect():
     user_id = get_jwt_identity()
-    emit('welcome', {'message': f'Подключен пользователь {user_id}'})
+    emit('welcome', {'message': f'Connected user {user_id}'})
+
+async def start_video_processing(user_id):
+    await video_processing_async(user_id)
 
 if __name__ == "__main__":
     user_id = "1"  # Заменится после входа
-    video_thread = threading.Thread(target=video_processing, args=(user_id,))
+    video_thread = threading.Thread(target=lambda: asyncio.run(start_video_processing(str(user_id))))
     video_thread.start()
     scheduler.start()
     socketio.run(app, debug=True, use_reloader=False)
