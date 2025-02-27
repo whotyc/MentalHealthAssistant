@@ -1,0 +1,188 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: MentalHealthAssistant\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2025-02-24 12:00+0000\n"
+"PO-Revision-Date: 2025-02-24 12:00+0000\n"
+"Last-Translator: You\n"
+"Language-Team: Spanish\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: web_version.py
+msgid "Login — MentalHealthAssistant"
+msgstr "Inicio de Sesión — MentalHealthAssistant"
+
+#: web_version.py
+msgid "Login"
+msgstr "Iniciar Sesión"
+
+#: web_version.py
+msgid "Username"
+msgstr "Nombre de Usuario"
+
+#: web_version.py
+msgid "Password"
+msgstr "Contraseña"
+
+#: web_version.py
+msgid "Log in"
+msgstr "Iniciar Sesión"
+
+#: web_version.py
+msgid "Register"
+msgstr "Registrarse"
+
+#: web_version.py
+msgid "User already exists"
+msgstr "El usuario ya existe"
+
+#: web_version.py
+msgid "Invalid login or password"
+msgstr "Inicio de sesión o contraseña inválidos"
+
+#: web_version.py
+msgid "Personal Assistant"
+msgstr "Asistente Personal"
+
+#: web_version.py
+msgid "User:"
+msgstr "Usuario:"
+
+#: web_version.py
+msgid "Logout"
+msgstr "Cerrar Sesión"
+
+#: web_version.py
+msgid "History"
+msgstr "Historial"
+
+#: web_version.py
+msgid "Chat with AI"
+msgstr "Chat con IA"
+
+#: web_version.py
+msgid "Diary"
+msgstr "Diario"
+
+#: web_version.py
+msgid "History of States"
+msgstr "Historial de Estados"
+
+#: web_version.py
+msgid "Stress Chart"
+msgstr "Gráfico de Estrés"
+
+#: web_version.py
+msgid "Emotion"
+msgstr "Emoción"
+
+#: web_version.py
+msgid "Time"
+msgstr "Hora"
+
+#: web_version.py
+msgid "Stress Level"
+msgstr "Nivel de Estrés"
+
+#: web_version.py
+msgid "Chat with AI Psychologist"
+msgstr "Chat con Psicólogo IA"
+
+#: web_version.py
+msgid "Write your thoughts..."
+msgstr "Escribe tus pensamientos..."
+
+#: web_version.py
+msgid "Send"
+msgstr "Enviar"
+
+#: web_version.py
+msgid "Voice Input"
+msgstr "Entrada de Voz"
+
+#: web_version.py
+msgid "Chat History"
+msgstr "Historial de Chat"
+
+#: web_version.py
+msgid "You ("
+msgstr "Tú ("
+
+#: web_version.py
+msgid "AI:"
+msgstr "IA:"
+
+#: web_version.py
+msgid "Recent Entries"
+msgstr "Entradas Recientes"
+
+#: web_version.py
+msgid "Mood:"
+msgstr "Estado de Ánimo:"
+
+#: web_version.py
+msgid "Happy"
+msgstr "Feliz"
+
+#: web_version.py
+msgid "Sad"
+msgstr "Triste"
+
+#: web_version.py
+msgid "Angry"
+msgstr "Enojado"
+
+#: web_version.py
+msgid "Stressed"
+msgstr "Estresado"
+
+#: web_version.py
+msgid "Save"
+msgstr "Guardar"
+
+#: web_version.py
+msgid "Your stress level is high. Try meditation!"
+msgstr "¡Tu nivel de estrés es alto. Prueba meditar!"
+
+#: web_version.py
+msgid "Listening..."
+msgstr "Escuchando..."
+
+#: web_version.py
+msgid "Could not recognize speech."
+msgstr "No se pudo reconocer el habla."
+
+#: web_version.py
+msgid "Service recognition error."
+msgstr "Error en el servicio de reconocimiento."
+
+#: web_version.py
+msgid "Voice input error"
+msgstr "Error de entrada de voz"
+
+#: web_version.py
+msgid "Missing data"
+msgstr "Datos faltantes"
+
+#: web_version.py
+msgid "Take a break."
+msgstr "Toma un descanso."
+
+#: web_version.py
+msgid "Take deep breaths."
+msgstr "Toma respiraciones profundas."
+
+#: web_version.py
+msgid "Talk to a friend."
+msgstr "Habla con un amigo."
+
+#: web_version.py
+msgid "Keep the positivity!"
+msgstr "¡Mantén la positividad!"
+
+#: web_version.py
+msgid "Try meditation."
+msgstr "Prueba meditar."

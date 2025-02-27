@@ -10,10 +10,12 @@ numpy
 torch
 transformers
 spotipy
-speech_recognition
+SpeechRecognition
 pyttsx3
 apscheduler
 matplotlib
 requests
 aiohttp
 bcrypt
+pyaudio
+moviepy

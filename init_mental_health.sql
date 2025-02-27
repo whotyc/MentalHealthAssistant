@@ -1,7 +1,7 @@
 CREATE TABLE users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL
+    password TEXT NOT NULL
 );
 
 CREATE TABLE emotions (
@@ -19,14 +19,5 @@ CREATE TABLE chats (
     message TEXT NOT NULL,
     response TEXT NOT NULL,
     timestamp TEXT NOT NULL,
-    FOREIGN KEY (user_id) REFERENCES users(id)
-);
-
-CREATE TABLE diaries (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id TEXT NOT NULL,
-    content TEXT NOT NULL,
-    timestamp TEXT NOT NULL,
-    mood TEXT,
     FOREIGN KEY (user_id) REFERENCES users(id)
 );

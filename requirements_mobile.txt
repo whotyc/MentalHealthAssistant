@@ -12,3 +12,4 @@ plyer
 matplotlib
 requests
 bcrypt
+pyaudio

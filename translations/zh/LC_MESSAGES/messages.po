@@ -1,0 +1,188 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: MentalHealthAssistant\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2025-02-24 12:00+0000\n"
+"PO-Revision-Date: 2025-02-24 12:00+0000\n"
+"Last-Translator: You\n"
+"Language-Team: Chinese (Simplified)\n"
+"Language: zh\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: web_version.py
+msgid "Login — MentalHealthAssistant"
+msgstr "登录 — MentalHealthAssistant"
+
+#: web_version.py
+msgid "Login"
+msgstr "登录"
+
+#: web_version.py
+msgid "Username"
+msgstr "用户名"
+
+#: web_version.py
+msgid "Password"
+msgstr "密码"
+
+#: web_version.py
+msgid "Log in"
+msgstr "登录"
+
+#: web_version.py
+msgid "Register"
+msgstr "注册"
+
+#: web_version.py
+msgid "User already exists"
+msgstr "用户已存在"
+
+#: web_version.py
+msgid "Invalid login or password"
+msgstr "无效的用户名或密码"
+
+#: web_version.py
+msgid "Personal Assistant"
+msgstr "个人助手"
+
+#: web_version.py
+msgid "User:"
+msgstr "用户："
+
+#: web_version.py
+msgid "Logout"
+msgstr "退出"
+
+#: web_version.py
+msgid "History"
+msgstr "历史"
+
+#: web_version.py
+msgid "Chat with AI"
+msgstr "与AI聊天"
+
+#: web_version.py
+msgid "Diary"
+msgstr "日记"
+
+#: web_version.py
+msgid "History of States"
+msgstr "状态历史"
+
+#: web_version.py
+msgid "Stress Chart"
+msgstr "压力图表"
+
+#: web_version.py
+msgid "Emotion"
+msgstr "情绪"
+
+#: web_version.py
+msgid "Time"
+msgstr "时间"
+
+#: web_version.py
+msgid "Stress Level"
+msgstr "压力水平"
+
+#: web_version.py
+msgid "Chat with AI Psychologist"
+msgstr "与AI心理医生聊天"
+
+#: web_version.py
+msgid "Write your thoughts..."
+msgstr "写下您的想法..."
+
+#: web_version.py
+msgid "Send"
+msgstr "发送"
+
+#: web_version.py
+msgid "Voice Input"
+msgstr "语音输入"
+
+#: web_version.py
+msgid "Chat History"
+msgstr "聊天记录"
+
+#: web_version.py
+msgid "You ("
+msgstr "您（"
+
+#: web_version.py
+msgid "AI:"
+msgstr "AI："
+
+#: web_version.py
+msgid "Recent Entries"
+msgstr "最近条目"
+
+#: web_version.py
+msgid "Mood:"
+msgstr "心情："
+
+#: web_version.py
+msgid "Happy"
+msgstr "开心"
+
+#: web_version.py
+msgid "Sad"
+msgstr "悲伤"
+
+#: web_version.py
+msgid "Angry"
+msgstr "愤怒"
+
+#: web_version.py
+msgid "Stressed"
+msgstr "压力大"
+
+#: web_version.py
+msgid "Save"
+msgstr "保存"
+
+#: web_version.py
+msgid "Your stress level is high. Try meditation!"
+msgstr "您的压力水平很高。尝试冥想！"
+
+#: web_version.py
+msgid "Listening..."
+msgstr "正在聆听..."
+
+#: web_version.py
+msgid "Could not recognize speech."
+msgstr "无法识别语音。"
+
+#: web_version.py
+msgid "Service recognition error."
+msgstr "服务识别错误。"
+
+#: web_version.py
+msgid "Voice input error"
+msgstr "语音输入错误"
+
+#: web_version.py
+msgid "Missing data"
+msgstr "缺少数据"
+
+#: web_version.py
+msgid "Take a break."
+msgstr "休息一下。"
+
+#: web_version.py
+msgid "Take deep breaths."
+msgstr "深呼吸。"
+
+#: web_version.py
+msgid "Talk to a friend."
+msgstr "与朋友聊天。"
+
+#: web_version.py
+msgid "Keep the positivity!"
+msgstr "保持积极！"
+
+#: web_version.py
+msgid "Try meditation."
+msgstr "尝试冥想。"

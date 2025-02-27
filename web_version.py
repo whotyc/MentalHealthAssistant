@@ -24,25 +24,88 @@ import pyttsx3
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime
 import bcrypt
+import os
+import pkg_resources
+import sys
+
+# Проверка и обновление версии flask-babel
+try:
+    flask_babel_version = pkg_resources.get_distribution("flask-babel").version
+    print(f"Установленная версия flask-babel: {flask_babel_version}")
+    if pkg_resources.parse_version(flask_babel_version) < pkg_resources.parse_version("4.0.0"):
+        print("Обновление flask-babel до версии >= 4.0.0...")
+        sys.exit("Пожалуйста, выполните 'pip install --upgrade flask-babel' и перезапустите скрипт.")
+except pkg_resources.DistributionNotFound:
+    print("Библиотека flask-babel не установлена. Установите её с помощью 'pip install flask-babel'.")
+    sys.exit(1)
 
 # Инициализация
-detector = FER()
+cascade_path = os.path.join(os.path.dirname(__file__), '.venv', 'Lib', 'site-packages', 'cv2', 'data', 'haarcascade_frontalface_default.xml')
+if not os.path.exists(cascade_path):
+    raise FileNotFoundError(f"Haarcascade file not found at {cascade_path}. Please download it from "
+                            "https://github.com/opencv/opencv/tree/master/data/haarcascades and place it "
+                            "in the cv2/data directory or specify the correct path.")
+detector = FER(cascade_file=cascade_path)
 cap = cv2.VideoCapture(0)
+
+# Создание приложения Flask
 app = Flask(__name__)
 app.secret_key = "supersecretkey"
 jwt = JWTManager(app)
 app.config['JWT_SECRET_KEY'] = 'jwt-secret-string'
 app.config['BABEL_DEFAULT_LOCALE'] = 'ru'
 app.config['BABEL_TRANSLATION_DIRECTORIES'] = './translations'
+
+# Инициализация Babel с использованием init_app
+babel = Babel()
+babel.init_app(app)
+
+# Проверка доступности localeselector
+if not hasattr(babel, 'localeselector'):
+    raise AttributeError(f"Метод localeselector отсутствует в версии flask-babel {flask_babel_version}. "
+                         "Убедитесь, что установлена версия >= 4.0.0. Используйте 'pip install --upgrade flask-babel'.")
+
 socketio = SocketIO(app, cors_allowed_origins="*")
 scheduler = BackgroundScheduler()
-babel = Babel(app)
 
 # Переводы
 LANGUAGES = ['ru', 'en', 'es', 'fr', 'de', 'zh']
 
 # База данных
 conn = sqlite3.connect("mental_health.db", check_same_thread=False)
+cursor = conn.cursor()
+cursor.executescript("""
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS emotions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        emotion TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        stress_level REAL NOT NULL,
+        user_id INTEGER NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+    CREATE TABLE IF NOT EXISTS chats (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        message TEXT NOT NULL,
+        response TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+    CREATE TABLE IF NOT EXISTS diaries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        content TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        mood TEXT,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+""")
+conn.commit()
 
 # Spotify
 sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
@@ -69,14 +132,16 @@ class EmotionPredictor(nn.Module):
         return x
 
 model = EmotionPredictor()
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+criterion = nn.CrossEntropyLoss()
 psychologist = pipeline("text-generation", model="distilgpt2")
 
 # Рекомендации
 recommendations = {
-    "angry": {"text": gettext("Take deep breaths."), "spotify": "relaxing piano"},
-    "sad": {"text": gettext("Talk to a friend."), "spotify": "uplifting pop"},
-    "happy": {"text": gettext("Keep the positivity!"), "spotify": "happy vibes"},
-    "stressed": {"text": gettext("Try meditation."), "spotify": "calm meditation"}
+    "angry": {"text": lazy_gettext("Take deep breaths."), "spotify": "relaxing piano"},
+    "sad": {"text": lazy_gettext("Talk to a friend."), "spotify": "uplifting pop"},
+    "happy": {"text": lazy_gettext("Keep the positivity!"), "spotify": "happy vibes"},
+    "stressed": {"text": lazy_gettext("Try meditation."), "spotify": "calm meditation"}
 }
 
 # Голосовые функции
@@ -174,12 +239,12 @@ async def video_processing_async(user_id):
                 await asyncio.to_thread(lambda: loss.backward())
                 await asyncio.to_thread(lambda: optimizer.step())
 
-            rec = recommendations.get(pred_emotion, {"text": gettext("Take a break."), "spotify": "calm"})
+            rec = recommendations.get(pred_emotion, {"text": lazy_gettext("Take a break."), "spotify": "calm"})
             track = sp.search(q=rec["spotify"], type="playlist", limit=1)["playlists"]["items"][0]["external_urls"]["spotify"]
-            await asyncio.to_thread(lambda: cv2.putText(frame, f"Emotion: {pred_emotion}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2))
-            await asyncio.to_thread(lambda: cv2.putText(frame, f"Stress: {stress_level:.2f}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2))
+            await asyncio.to_thread(lambda: cv2.putText(frame, f"{gettext('Emotion')}: {pred_emotion}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2))
+            await asyncio.to_thread(lambda: cv2.putText(frame, f"{gettext('Stress')}: {stress_level:.2f}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2))
             await asyncio.to_thread(lambda: cv2.putText(frame, rec["text"], (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2))
-            await asyncio.to_thread(lambda: cv2.putText(frame, f"Spotify: {track}", (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2))
+            await asyncio.to_thread(lambda: cv2.putText(frame, f"{gettext('Spotify')}: {track}", (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2))
 
             await save_emotion_async(pred_emotion, stress_level, user_id)
             socketio.emit('update_emotion', {'emotion': pred_emotion, 'stress': stress_level}, namespace='/notifications')
@@ -198,7 +263,7 @@ def recognize_speech():
         print(gettext("Listening..."))
         audio = recognizer.listen(source, timeout=5)
     try:
-        text = recognizer.recognize_google(audio, language="ru-RU")
+        text = recognizer.recognize_google(audio, language=f"{babel.locale.language}-RU")
         return text
     except sr.UnknownValueError:
         return gettext("Could not recognize speech.")
@@ -446,11 +511,11 @@ async def history(user_id):
 async def chat(user_id):
     if request.method == 'POST' and 'message' in request.form:
         message = request.form['message']
-        response = await async_psychologist(f"Ты психолог. Помоги мне: {message}")
+        response = await async_psychologist(f"You are a psychologist. Help me: {message}")
         await save_chat_async(user_id, message, response)
     elif request.method == 'POST' and 'voice' in request.form:
         text = await recognize_speech_async()
-        if text not in ["Could not recognize speech.", "Service recognition error."]:
+        if text not in [gettext("Could not recognize speech."), gettext("Service recognition error.")]:
             response = await async_psychologist(f"You are a psychologist. Help me: {text}")
             await save_chat_async(user_id, text, response)
             await text_to_speech_async(response)
@@ -691,6 +756,7 @@ if __name__ == "__main__":
     user_id = "1"  # Заменится после входа
     video_thread = threading.Thread(target=lambda: asyncio.run(start_video_processing(str(user_id))))
     video_thread.start()
+    scheduler.add_job(lambda: asyncio.run(check_stress_and_notify_async(str(user_id))), 'interval', minutes=30)
     scheduler.start()
     socketio.run(app, debug=True, use_reloader=False)
     cap.release()

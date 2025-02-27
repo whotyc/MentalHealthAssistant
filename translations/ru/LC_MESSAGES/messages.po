@@ -1,0 +1,188 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: MentalHealthAssistant\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2025-02-24 12:00+0000\n"
+"PO-Revision-Date: 2025-02-24 12:00+0000\n"
+"Last-Translator: You\n"
+"Language-Team: Russian\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#: web_version.py
+msgid "Login — MentalHealthAssistant"
+msgstr "Вход — MentalHealthAssistant"
+
+#: web_version.py
+msgid "Login"
+msgstr "Вход"
+
+#: web_version.py
+msgid "Username"
+msgstr "Логин"
+
+#: web_version.py
+msgid "Password"
+msgstr "Пароль"
+
+#: web_version.py
+msgid "Log in"
+msgstr "Войти"
+
+#: web_version.py
+msgid "Register"
+msgstr "Регистрация"
+
+#: web_version.py
+msgid "User already exists"
+msgstr "Пользователь уже существует"
+
+#: web_version.py
+msgid "Invalid login or password"
+msgstr "Неверный логин или пароль"
+
+#: web_version.py
+msgid "Personal Assistant"
+msgstr "Персональный помощник"
+
+#: web_version.py
+msgid "User:"
+msgstr "Пользователь:"
+
+#: web_version.py
+msgid "Logout"
+msgstr "Выйти"
+
+#: web_version.py
+msgid "History"
+msgstr "История"
+
+#: web_version.py
+msgid "Chat with AI"
+msgstr "Чат с ИИ"
+
+#: web_version.py
+msgid "Diary"
+msgstr "Дневник"
+
+#: web_version.py
+msgid "History of States"
+msgstr "История состояния"
+
+#: web_version.py
+msgid "Stress Chart"
+msgstr "График стресса"
+
+#: web_version.py
+msgid "Emotion"
+msgstr "Эмоция"
+
+#: web_version.py
+msgid "Time"
+msgstr "Время"
+
+#: web_version.py
+msgid "Stress Level"
+msgstr "Уровень стресса"
+
+#: web_version.py
+msgid "Chat with AI Psychologist"
+msgstr "Чат с ИИ-психологом"
+
+#: web_version.py
+msgid "Write your thoughts..."
+msgstr "Напишите свои мысли..."
+
+#: web_version.py
+msgid "Send"
+msgstr "Отправить"
+
+#: web_version.py
+msgid "Voice Input"
+msgstr "Голосовой ввод"
+
+#: web_version.py
+msgid "Chat History"
+msgstr "История чата"
+
+#: web_version.py
+msgid "You ("
+msgstr "Вы ("
+
+#: web_version.py
+msgid "AI:"
+msgstr "ИИ:"
+
+#: web_version.py
+msgid "Recent Entries"
+msgstr "Последние записи"
+
+#: web_version.py
+msgid "Mood:"
+msgstr "Настроение:"
+
+#: web_version.py
+msgid "Happy"
+msgstr "Счастливый"
+
+#: web_version.py
+msgid "Sad"
+msgstr "Грустный"
+
+#: web_version.py
+msgid "Angry"
+msgstr "Злой"
+
+#: web_version.py
+msgid "Stressed"
+msgstr "Стресс"
+
+#: web_version.py
+msgid "Save"
+msgstr "Сохранить"
+
+#: web_version.py
+msgid "Your stress level is high. Try meditation!"
+msgstr "Ваш уровень стресса высокий. Попробуйте медитацию!"
+
+#: web_version.py
+msgid "Listening..."
+msgstr "Слушаю..."
+
+#: web_version.py
+msgid "Could not recognize speech."
+msgstr "Не удалось распознать речь."
+
+#: web_version.py
+msgid "Service recognition error."
+msgstr "Ошибка сервиса распознавания."
+
+#: web_version.py
+msgid "Voice input error"
+msgstr "Ошибка голосового ввода"
+
+#: web_version.py
+msgid "Missing data"
+msgstr "Не хватает данных"
+
+#: web_version.py
+msgid "Take a break."
+msgstr "Отдохните."
+
+#: web_version.py
+msgid "Take deep breaths."
+msgstr "Глубоко подышите."
+
+#: web_version.py
+msgid "Talk to a friend."
+msgstr "Поговорите с другом."
+
+#: web_version.py
+msgid "Keep the positivity!"
+msgstr "Сохраняйте позитив!"
+
+#: web_version.py
+msgid "Try meditation."
+msgstr "Попробуйте медитацию."{\rtf1}
