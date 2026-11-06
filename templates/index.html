@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f4efe7">
+  <title>Mental Health Assistant</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="noauth">
+  <header class="topbar">
+    <div class="brand">Mental Health Assistant</div>
+    <select id="lang" aria-label="Language">
+      <option value="ru">Русский</option>
+      <option value="en">English</option>
+      <option value="zh">中文</option>
+      <option value="de">Deutsch</option>
+      <option value="fr">Français</option>
+      <option value="es">Español</option>
+    </select>
+  </header>
+
+  <main>
+    <section id="view-auth" class="view active">
+      <div class="auth">
+        <h1 data-i18n="auth_title"></h1>
+        <p class="lead" data-i18n="auth_tagline"></p>
+        <form id="auth-form" novalidate>
+          <input id="a-name" data-i18n-ph="auth_name" autocomplete="name" maxlength="60">
+          <input id="a-email" type="email" data-i18n-ph="auth_email" autocomplete="email">
+          <input id="a-pass" type="password" data-i18n-ph="auth_pass">
+          <div id="a-err" class="error"></div>
+          <button class="btn" id="a-submit" type="submit"></button>
+        </form>
+        <p class="switch"><span id="a-switch-text"></span> <a href="#" id="a-switch"></a></p>
+      </div>
+    </section>
+
+    <section id="view-home" class="view">
+      <p class="hello" id="h-hello"></p>
+      <h1 data-i18n="home_q"></h1>
+      <p class="lead" data-i18n="home_sub"></p>
+      <button class="btn" id="h-start" data-i18n="start_scan"></button>
+
+      <div class="facts">
+        <div>
+          <div class="label" data-i18n="today_mood"></div>
+          <div class="fact" id="h-today"></div>
+          <div class="muted small" id="h-today-sub"></div>
+        </div>
+        <div>
+          <div class="label" data-i18n="week_title"></div>
+          <div class="fact"><span id="h-week">0</span> <span class="small muted" data-i18n="analyses"></span></div>
+          <div class="muted small" id="h-week-sub"></div>
+        </div>
+      </div>
+
+      <h3 data-i18n="tips_title"></h3>
+      <div id="h-tips" class="tips"></div>
+    </section>
+
+    <section id="view-scan" class="view">
+      <h1 data-i18n="scan_title"></h1>
+      <p class="lead" data-i18n="scan_desc"></p>
+      <div class="stage" id="stage">
+        <video id="video" playsinline muted></video>
+        <canvas id="overlay"></canvas>
+      </div>
+      <div class="stage-msg" id="stage-msg"></div>
+      <div class="live" id="live"></div>
+      <label class="check"><input type="checkbox" id="use-voice" checked>
+        <span data-i18n="scan_voice"></span></label>
+      <p class="muted small" data-i18n="scan_voice_hint"></p>
+      <div class="progress" id="progress"><div id="progress-bar"></div></div>
+      <div class="row">
+        <button class="btn ghost" id="btn-cam"></button>
+        <button class="btn" id="btn-analyze" disabled></button>
+      </div>
+      <div id="result"></div>
+    </section>
+
+    <section id="view-chat" class="view">
+      <div class="head-row">
+        <h1 data-i18n="chat_title"></h1>
+        <button class="link" id="chat-clear" data-i18n="chat_clear"></button>
+      </div>
+      <p class="muted small" data-i18n="chat_disclaimer"></p>
+      <div id="chat-box" class="chat-box"></div>
+      <div class="chips" id="chips"></div>
+      <form id="chat-form" class="chat-form">
+        <input id="chat-input" data-i18n-ph="chat_ph" autocomplete="off" maxlength="1000">
+        <button class="btn" type="submit" data-i18n="chat_send"></button>
+      </form>
+    </section>
+
+    <section id="view-profile" class="view">
+      <h1 id="p-name"></h1>
+      <div class="muted" id="p-email"></div>
+
+      <h3 data-i18n="prof_stress"></h3>
+      <div class="chart-wrap"><canvas id="ch-stress"></canvas></div>
+      <p class="muted small" id="p-nodata" data-i18n="prof_notenough"></p>
+
+      <h3 data-i18n="prof_emotions"></h3>
+      <div class="chart-wrap"><canvas id="ch-emo"></canvas></div>
+
+      <h3 data-i18n="prof_history"></h3>
+      <div id="p-history"></div>
+
+      <div class="row bottom-actions">
+        <button class="btn ghost" id="p-delete" data-i18n="prof_delete"></button>
+        <button class="btn ghost" id="p-logout" data-i18n="prof_logout"></button>
+      </div>
+    </section>
+  </main>
+
+  <nav class="nav">
+    <button class="nav-btn" data-view="home" data-i18n="nav_home"></button>
+    <button class="nav-btn" data-view="scan" data-i18n="nav_scan"></button>
+    <button class="nav-btn" data-view="chat" data-i18n="nav_chat"></button>
+    <button class="nav-btn" data-view="profile" data-i18n="nav_profile"></button>
+  </nav>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="{{ url_for('static', filename='i18n.js') }}"></script>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
